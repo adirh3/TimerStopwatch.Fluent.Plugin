@@ -172,25 +172,30 @@ public sealed class StopwatchPreviewControlBuilder : IResultPreviewControlBuilde
             var accentLight2 = TryGetColor("SystemAccentColorLight2") ?? systemAccent;
             var accentDark2 = TryGetColor("SystemAccentColorDark2") ?? systemAccent;
 
-            // Hard clip to the dial circle so nothing can escape due to AA/stroke caps.
-            var clipRect = new Rect(cx - (size / 2), cy - (size / 2), size, size);
-            // Avalonia's DrawingContext clip uses RoundedRect; with a square and radius=size/2 this becomes a circle.
-            using (context.PushClip(new RoundedRect(clipRect, size / 2)))
-            {
-                // The dark ring is derived from the accent so it fits the user's theme.
-                var ringPen = new Pen(new SolidColorBrush(accentDark2, 0.55), ringThickness);
-                var accentPen = new Pen(new SolidColorBrush(accentLight2, 0.24), ringThickness);
-                context.DrawEllipse(null, ringPen, new Point(cx, cy), outerRadius, outerRadius);
-                context.DrawEllipse(null, accentPen, new Point(cx, cy), outerRadius, outerRadius);
+            // Avalonia DrawingContext overloads can differ across Fluent Search releases (plugins use host Avalonia).
+            // Use DrawGeometry + Pen properties, which have been far more stable across versions.
 
-                double radians = (Angle - 90.0) * (Math.PI / 180.0);
-                var end = new Point(cx + (Math.Cos(radians) * handRadius), cy + (Math.Sin(radians) * handRadius));
-                var handPen = new Pen(new SolidColorBrush(systemAccent), handThickness, lineCap: PenLineCap.Round);
-                context.DrawLine(handPen, new Point(cx, cy), end);
+            // The dark ring is derived from the accent so it fits the user's theme.
+            var ringBrush = new SolidColorBrush(accentDark2) { Opacity = 0.55 };
+            var accentBrush = new SolidColorBrush(accentLight2) { Opacity = 0.24 };
+            var ringPen = new Pen(ringBrush, ringThickness);
+            var accentPen = new Pen(accentBrush, ringThickness);
 
-                context.DrawEllipse(new SolidColorBrush(accentLight1), null, new Point(cx, cy), centerSize / 2,
-                    centerSize / 2);
-            }
+            var ringRect = new Rect(cx - outerRadius, cy - outerRadius, outerRadius * 2, outerRadius * 2);
+            var ringGeo = new EllipseGeometry(ringRect);
+            context.DrawGeometry(null, ringPen, ringGeo);
+            context.DrawGeometry(null, accentPen, ringGeo);
+
+            // Hand (keep inside the ring by construction; no clip required).
+            double radians = (Angle - 90.0) * (Math.PI / 180.0);
+            var end = new Point(cx + (Math.Cos(radians) * handRadius), cy + (Math.Sin(radians) * handRadius));
+            var handPen = new Pen(new SolidColorBrush(systemAccent), handThickness) { LineCap = PenLineCap.Round };
+            context.DrawLine(handPen, new Point(cx, cy), end);
+
+            // Center dot
+            double cr = centerSize / 2;
+            var centerRect = new Rect(cx - cr, cy - cr, cr * 2, cr * 2);
+            context.DrawGeometry(new SolidColorBrush(accentLight1), null, new EllipseGeometry(centerRect));
         }
 
         private Color? TryGetColor(string key)
